@@ -30,6 +30,7 @@ def generate_sismograma():
             return jsonify({"error": "Faltan parámetros requeridos"}), 400
 
         # Base URL para los datos MiniSEED
+        #url = f"http://osso.univalle.edu.co/apps/seiscomp/archive/{start[:4]}/{net}/{sta}/{cha}/{net}.{sta}.{loc}.{cha}.{start[:4]}.{start[5:7]}"
         base_url = f"http://osso.univalle.edu.co/apps/seiscomp/archive/{start[:4]}/{net}/{sta}/"
 
         # Descargar y procesar datos de cada canal
