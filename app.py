@@ -11,14 +11,14 @@ from flask import Flask, request, jsonify, send_file
 import requests
 import io
 from obspy import read
-import plotly.graph_objects as go
+import matplotlib.pyplot as plt
 from datetime import datetime
-import urllib.request
 import os
 from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)
+
 
 def date_to_julian_day(date: str) -> int:
     """Convierte una fecha ISO8601 al día juliano del año."""
@@ -26,6 +26,7 @@ def date_to_julian_day(date: str) -> int:
     start_of_year = datetime(dt.year, 1, 1)
     julian_day = (dt - start_of_year).days + 1
     return julian_day
+
 
 @app.route('/generate_sismograma', methods=['GET'])
 def generate_sismograma():
@@ -58,50 +59,55 @@ def generate_sismograma():
         # Diccionario para almacenar los streams de cada canal
         streams = {}
 
-        # Descargar y procesar los datos de cada canal
+        # Descargar y procesar los datos de cada canal utilizando archivos temporales
         for channel, url in zip(channels, urls):
             print(f"Accediendo a: {url}")
             try:
+                temp_file = f"{channel}.mseed"
                 response = requests.get(url, timeout=150)
                 if response.status_code != 200:
                     raise Exception(f"Error {response.status_code} al descargar el archivo {url}")
 
-                streams[channel] = read(io.BytesIO(response.content))
+                with open(temp_file, 'wb') as f:
+                    f.write(response.content)
+
+                streams[channel] = read(temp_file)
+                print(f"Información del archivo {channel}:")
+                print(streams[channel][0].stats)  # Mostrar información básica de la estación
+                os.remove(temp_file)  # Eliminar el archivo temporal después de leerlo
             except Exception as e:
                 return jsonify({"error": f"Error al procesar el archivo {channel}: {str(e)}"}), 500
 
-        # Crear gráficos combinados con Plotly
-        fig = go.Figure()
-        for channel, stream in streams.items():
+        # Crear gráficos combinados
+        fig, axes = plt.subplots(len(channels), 1, figsize=(12, 10))
+        for idx, (channel, stream) in enumerate(streams.items()):
             trace = stream[0]
-            fig.add_trace(
-                go.Scatter(
-                    x=trace.times("matplotlib"),
-                    y=trace.data,
-                    mode='lines',
-                    name=f"Canal {channel}"
-                )
-            )
+            axes[idx].plot(trace.times("matplotlib"), trace.data, label=f"Canal {channel}", color='blue')
+            axes[idx].set_title(f"Sismograma {channel} ({sta})")
+            axes[idx].set_xlabel("Tiempo (UTC)")
+            axes[idx].set_ylabel("Amplitud")
+            axes[idx].grid()
+            axes[idx].legend()
 
-        fig.update_layout(
-            title=f"Sismogramas para la estación {sta}",
-            xaxis_title="Tiempo (UTC)",
-            yaxis_title="Amplitud",
-            template="plotly_white"
-        )
+        plt.tight_layout()
 
-        # Guardar el gráfico como imagen
+        # Guardar la imagen en memoria y devolverla
         output_image = io.BytesIO()
-        fig.write_image(output_image, format='png')
+        plt.savefig(output_image, format='png')
         output_image.seek(0)
+        plt.close(fig)
+
+        print(f"Imagen generada para los canales: {streams.keys()}")
 
         return send_file(output_image, mimetype='image/png')
 
     except Exception as e:
         return jsonify({"error": f"Ocurrió un error: {str(e)}"}), 500
 
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+
 
 
 
