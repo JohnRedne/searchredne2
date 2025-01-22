@@ -12,6 +12,10 @@ import requests
 import io
 from obspy import read
 import matplotlib.pyplot as plt
+import matplotlib
+
+# Configurar matplotlib para entornos sin GUI
+matplotlib.use('Agg')
 
 app = Flask(__name__)
 
@@ -37,17 +41,20 @@ def generate_sismograma():
 
         # Descargar y procesar datos de cada canal
         for channel in channels:
-            # Construir la URL para el canal
-            url = f"{base_url}{channel}/{net}.{sta}.00.{channel}.{start[:4]}.{start[5:7]}"
-            print(f"Accediendo a: {url}")
+            try:
+                # Construir la URL para el canal
+                url = f"{base_url}{channel}/{net}.{sta}.00.{channel}.{start[:4]}.{start[5:7]}"
+                print(f"Accediendo a: {url}")
 
-            # Descargar el archivo MiniSEED
-            response = requests.get(url, timeout=150)
-            if response.status_code != 200:
-                return jsonify({"error": f"Error al descargar datos para el canal {channel}: {response.status_code}"}), 500
+                # Descargar el archivo MiniSEED
+                response = requests.get(url, timeout=150)
+                response.raise_for_status()
 
-            # Leer el archivo MiniSEED
-            streams[channel] = read(io.BytesIO(response.content))
+                # Leer el archivo MiniSEED
+                streams[channel] = read(io.BytesIO(response.content))
+            except Exception as e:
+                print(f"Error al procesar el canal {channel}: {e}")
+                return jsonify({"error": f"Error al procesar el canal {channel}: {e}"}), 500
 
         # Crear gráficos combinados
         fig, axes = plt.subplots(len(channels), 1, figsize=(12, 10))
@@ -71,8 +78,10 @@ def generate_sismograma():
         return send_file(output_image, mimetype='image/png')
 
     except Exception as e:
-        return jsonify({"error": f"Ocurrió un error: {str(e)}"}), 500
+        print(f"Error inesperado: {e}")
+        return jsonify({"error": f"Ocurrió un error inesperado: {str(e)}"}), 500
 
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+
