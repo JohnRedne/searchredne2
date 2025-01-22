@@ -31,6 +31,7 @@ def date_to_julian_day(date: str) -> int:
 
 @app.route('/generate_sismograma', methods=['GET'])
 def generate_sismograma():
+    print(f"Solicitud recibida: {request.args}")  # Log de la solicitud
     try:
         # Obtener parámetros de la solicitud
         start = request.args.get('start')  # Fecha de inicio en ISO8601
