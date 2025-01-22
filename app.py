@@ -18,9 +18,7 @@ import os
 from flask_cors import CORS
 
 app = Flask(__name__)
-
 CORS(app)
-
 
 def date_to_julian_day(date: str) -> int:
     """Convierte una fecha ISO8601 al día juliano del año."""
@@ -31,14 +29,14 @@ def date_to_julian_day(date: str) -> int:
 
 @app.route('/generate_sismograma', methods=['GET'])
 def generate_sismograma():
-    print(f"Solicitud recibida: {request.args}")  # Log de la solicitud
+    print(f"Solicitud recibida: {request.args}")
     try:
         # Obtener parámetros de la solicitud
-        start = request.args.get('start')  # Fecha de inicio en ISO8601
-        end = request.args.get('end')      # Fecha de fin en ISO8601
-        net = request.args.get('net')      # Red (por ejemplo, "UX")
-        sta = request.args.get('sta')      # Estación (por ejemplo, "UIS01")
-        channels = ['HNE.D', 'HNN.D', 'HNZ.D']  # Lista de canales
+        start = request.args.get('start')
+        end = request.args.get('end')
+        net = request.args.get('net')
+        sta = request.args.get('sta')
+        channels = ['HNE.D', 'HNN.D', 'HNZ.D']
 
         # Validar parámetros
         if not all([start, end, net, sta]):
@@ -60,17 +58,15 @@ def generate_sismograma():
         # Diccionario para almacenar los streams de cada canal
         streams = {}
 
-        # Descargar y procesar los datos de cada canal utilizando archivos temporales
+        # Descargar y procesar los datos de cada canal
         for channel, url in zip(channels, urls):
             print(f"Accediendo a: {url}")
             try:
-                temp_file = f"{channel}.mseed"
-                urllib.request.urlretrieve(url, temp_file)  # Descargar el archivo
-                print(f"Archivo {temp_file} descargado con éxito.")
-                streams[channel] = read(temp_file)  # Leer el archivo MiniSEED
-                print(f"Información del archivo {channel}:")
-                print(streams[channel][0].stats)  # Mostrar información básica de la estación
-                os.remove(temp_file)  # Eliminar el archivo temporal después de leerlo
+                response = requests.get(url, timeout=150)
+                if response.status_code != 200:
+                    raise Exception(f"Error {response.status_code} al descargar el archivo {url}")
+
+                streams[channel] = read(io.BytesIO(response.content))
             except Exception as e:
                 return jsonify({"error": f"Error al procesar el archivo {channel}: {str(e)}"}), 500
 
@@ -93,8 +89,6 @@ def generate_sismograma():
         output_image.seek(0)
         plt.close(fig)
 
-        print(f"Imagen generada para los canales: {streams.keys()}")
-
         return send_file(output_image, mimetype='image/png')
 
     except Exception as e:
@@ -102,6 +96,7 @@ def generate_sismograma():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+
 
 
 
