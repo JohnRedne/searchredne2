@@ -11,7 +11,7 @@ from flask import Flask, request, jsonify, send_file
 import requests
 import io
 from obspy import read
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 from datetime import datetime
 import urllib.request
 import os
@@ -70,24 +70,30 @@ def generate_sismograma():
             except Exception as e:
                 return jsonify({"error": f"Error al procesar el archivo {channel}: {str(e)}"}), 500
 
-        # Crear gráficos combinados
-        fig, axes = plt.subplots(len(channels), 1, figsize=(12, 10))
-        for idx, (channel, stream) in enumerate(streams.items()):
+        # Crear gráficos combinados con Plotly
+        fig = go.Figure()
+        for channel, stream in streams.items():
             trace = stream[0]
-            axes[idx].plot(trace.times("matplotlib"), trace.data, label=f"Canal {channel}", color='blue')
-            axes[idx].set_title(f"Sismograma {channel} ({sta})")
-            axes[idx].set_xlabel("Tiempo (UTC)")
-            axes[idx].set_ylabel("Amplitud")
-            axes[idx].grid()
-            axes[idx].legend()
+            fig.add_trace(
+                go.Scatter(
+                    x=trace.times("matplotlib"),
+                    y=trace.data,
+                    mode='lines',
+                    name=f"Canal {channel}"
+                )
+            )
 
-        plt.tight_layout()
+        fig.update_layout(
+            title=f"Sismogramas para la estación {sta}",
+            xaxis_title="Tiempo (UTC)",
+            yaxis_title="Amplitud",
+            template="plotly_white"
+        )
 
-        # Guardar la imagen en memoria y devolverla
+        # Guardar el gráfico como imagen
         output_image = io.BytesIO()
-        plt.savefig(output_image, format='png')
+        fig.write_image(output_image, format='png')
         output_image.seek(0)
-        plt.close(fig)
 
         return send_file(output_image, mimetype='image/png')
 
@@ -96,6 +102,7 @@ def generate_sismograma():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+
 
 
 
