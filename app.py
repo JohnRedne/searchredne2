@@ -12,10 +12,7 @@ import requests
 import io
 from obspy import read
 import matplotlib.pyplot as plt
-import matplotlib
-
-# Configurar matplotlib para entornos sin GUI
-matplotlib.use('Agg')
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -23,8 +20,8 @@ app = Flask(__name__)
 def generate_sismograma():
     try:
         # Obtener parámetros
-        start = request.args.get('start')  # Fecha de inicio
-        end = request.args.get('end')      # Fecha de fin
+        start = request.args.get('start')  # Fecha de inicio (ISO8601)
+        end = request.args.get('end')      # Fecha de fin (ISO8601)
         net = request.args.get('net')      # Red
         sta = request.args.get('sta')      # Estación
         channels = ['HNE.D', 'HNN.D', 'HNZ.D']  # Lista de canales
@@ -33,7 +30,9 @@ def generate_sismograma():
         if not all([start, end, net, sta]):
             return jsonify({"error": "Faltan parámetros requeridos (start, end, net, sta)"}), 400
 
-        # Base URL para los datos MiniSEED
+        # Convertir fecha a día juliano
+        start_date = datetime.strptime(start[:10], "%Y-%m-%d")
+        day_of_year = start_date.strftime("%j")  # Día juliano
         base_url = f"http://osso.univalle.edu.co/apps/seiscomp/archive/{start[:4]}/{net}/{sta}/"
 
         # Diccionario para almacenar los datos de cada canal
@@ -41,20 +40,16 @@ def generate_sismograma():
 
         # Descargar y procesar datos de cada canal
         for channel in channels:
-            try:
-                # Construir la URL para el canal
-                url = f"{base_url}{channel}/{net}.{sta}.00.{channel}.{start[:4]}.{start[5:7]}"
-                print(f"Accediendo a: {url}")
+            url = f"{base_url}{channel}/{net}.{sta}.00.{channel}.{start[:4]}.{day_of_year}"
+            print(f"Accediendo a: {url}")
 
-                # Descargar el archivo MiniSEED
-                response = requests.get(url, timeout=150)
-                response.raise_for_status()
+            # Descargar el archivo MiniSEED
+            response = requests.get(url, timeout=150)
+            if response.status_code != 200:
+                return jsonify({"error": f"Error al descargar datos para el canal {channel}: {response.status_code}"}), 500
 
-                # Leer el archivo MiniSEED
-                streams[channel] = read(io.BytesIO(response.content))
-            except Exception as e:
-                print(f"Error al procesar el canal {channel}: {e}")
-                return jsonify({"error": f"Error al procesar el canal {channel}: {e}"}), 500
+            # Leer el archivo MiniSEED
+            streams[channel] = read(io.BytesIO(response.content))
 
         # Crear gráficos combinados
         fig, axes = plt.subplots(len(channels), 1, figsize=(12, 10))
@@ -78,10 +73,10 @@ def generate_sismograma():
         return send_file(output_image, mimetype='image/png')
 
     except Exception as e:
-        print(f"Error inesperado: {e}")
-        return jsonify({"error": f"Ocurrió un error inesperado: {str(e)}"}), 500
+        return jsonify({"error": f"Ocurrió un error: {str(e)}"}), 500
 
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+
 
