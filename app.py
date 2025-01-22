@@ -13,6 +13,8 @@ import io
 from obspy import read
 import matplotlib.pyplot as plt
 from datetime import datetime
+import urllib.request
+import os
 
 app = Flask(__name__)
 
@@ -50,15 +52,22 @@ def generate_sismograma():
             for channel in channels
         ]
 
-        # Descargar y procesar los datos de cada canal
+        # Diccionario para almacenar los streams de cada canal
         streams = {}
+
+        # Descargar y procesar los datos de cada canal utilizando archivos temporales
         for channel, url in zip(channels, urls):
             print(f"Accediendo a: {url}")
-            response = requests.get(url, timeout=150)
-            if response.status_code != 200:
-                return jsonify({"error": f"Error al descargar datos para el canal {channel}: {response.status_code}"}), 500
-
-            streams[channel] = read(io.BytesIO(response.content))
+            try:
+                temp_file = f"{channel}.mseed"
+                urllib.request.urlretrieve(url, temp_file)  # Descargar el archivo
+                print(f"Archivo {temp_file} descargado con éxito.")
+                streams[channel] = read(temp_file)  # Leer el archivo MiniSEED
+                print(f"Información del archivo {channel}:")
+                print(streams[channel][0].stats)  # Mostrar información básica de la estación
+                os.remove(temp_file)  # Eliminar el archivo temporal después de leerlo
+            except Exception as e:
+                return jsonify({"error": f"Error al procesar el archivo {channel}: {str(e)}"}), 500
 
         # Crear gráficos combinados
         fig, axes = plt.subplots(len(channels), 1, figsize=(12, 10))
@@ -79,8 +88,7 @@ def generate_sismograma():
         output_image.seek(0)
         plt.close(fig)
 
-        print(f"Generando imagen para {streams.keys()}")
-
+        print(f"Imagen generada para los canales: {streams.keys()}")
 
         return send_file(output_image, mimetype='image/png')
 
