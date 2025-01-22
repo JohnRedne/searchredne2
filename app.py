@@ -18,47 +18,50 @@ app = Flask(__name__)
 @app.route('/generate_sismograma', methods=['GET'])
 def generate_sismograma():
     try:
-        # Obtener parámetros de la solicitud
+        # Obtener parámetros
         start = request.args.get('start')
         end = request.args.get('end')
         net = request.args.get('net')
         sta = request.args.get('sta')
-        loc = request.args.get('loc')
-        cha = request.args.get('cha')
+        channels = ['HNE.D', 'HNN.D', 'HNZ.D']  # Lista de canales
 
         # Validar parámetros
-        if not all([start, end, net, sta, loc, cha]):
+        if not all([start, end, net, sta]):
             return jsonify({"error": "Faltan parámetros requeridos"}), 400
 
-        # Construir el enlace hacia el servidor de datos
-        url = f"http://osso.univalle.edu.co/fdsnws/dataselect/1/query?starttime={start}&endtime={end}&network={net}&station={sta}&location={loc}&channel={cha}&nodata=404"
+        # Base URL para los datos MiniSEED
+        base_url = f"http://osso.univalle.edu.co/apps/seiscomp/archive/{start[:4]}/{net}/{sta}/"
 
-        # Realizar la solicitud al servidor remoto
-        response = requests.get(url)
-        if response.status_code != 200:
-            return jsonify({"error": f"Error al descargar datos: {response.status_code}"}), 500
+        # Descargar y procesar datos de cada canal
+        streams = {}
+        for channel in channels:
+            # Construir el enlace para cada canal
+            url = f"{base_url}{channel}/{net}.{sta}.00.{channel}.{start[:4]}.{start[5:7]}"
+            print(f"Accediendo a: {url}")
+            response = requests.get(url)
+            if response.status_code != 200:
+                return jsonify({"error": f"Error al descargar datos para el canal {channel}: {response.status_code}"}), 500
+            streams[channel] = read(io.BytesIO(response.content))
 
-        # Procesar los datos MiniSEED
-        mini_seed_data = io.BytesIO(response.content)
-        st = read(mini_seed_data)
+        # Crear gráficos combinados
+        fig, axes = plt.subplots(len(channels), 1, figsize=(12, 10))
+        for idx, (channel, stream) in enumerate(streams.items()):
+            tr = stream[0]
+            axes[idx].plot(tr.times("matplotlib"), tr.data, label=f"Canal {channel}", color='blue')
+            axes[idx].set_title(f"Sismograma {channel} ({sta})")
+            axes[idx].set_ylabel("Amplitud")
+            axes[idx].legend()
+            axes[idx].grid()
+        plt.xlabel("Tiempo (HH:MM:SS UTC)")
+        plt.tight_layout()
 
-        # Crear gráfico del sismograma
-        tr = st[0]
-        fig, ax = plt.subplots(figsize=(10, 6))
-        ax.plot(tr.times("matplotlib"), tr.data, color='blue')
-        ax.set_title(f"Sismograma {sta} {cha}")
-        ax.set_xlabel("Tiempo (HH:MM:SS)")
-        ax.set_ylabel("Amplitud")
-        plt.grid()
-
-        # Guardar el gráfico en memoria
-        output = io.BytesIO()
-        plt.savefig(output, format='png')
-        output.seek(0)
+        # Guardar la imagen en memoria y enviarla como respuesta
+        output_image = io.BytesIO()
+        plt.savefig(output_image, format='png')
+        output_image.seek(0)
         plt.close(fig)
 
-        return send_file(output, mimetype='image/png')
-
+        return send_file(output_image, mimetype='image/png')
     except Exception as e:
         return jsonify({"error": f"Ocurrió un error: {str(e)}"}), 500
 
