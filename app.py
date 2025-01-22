@@ -64,7 +64,7 @@ def generate_sismograma():
             print(f"Accediendo a: {url}")
             try:
                 temp_file = f"{channel}.mseed"
-                response = requests.get(url, timeout=150)
+                response = requests.get(url, timeout=300)
                 if response.status_code != 200:
                     raise Exception(f"Error {response.status_code} al descargar el archivo {url}")
 
