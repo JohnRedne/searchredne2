@@ -42,7 +42,7 @@ def generate_sismograma():
             print(f"Accediendo a: {url}")
 
             # Descargar el archivo MiniSEED
-            response = requests.get(url, timeout=60)
+            response = requests.get(url, timeout=150)
             if response.status_code != 200:
                 return jsonify({"error": f"Error al descargar datos para el canal {channel}: {response.status_code}"}), 500
 
