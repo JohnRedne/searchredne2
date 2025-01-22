@@ -3,3 +3,4 @@ obspy
 matplotlib
 requests
 gunicorn
+Flask-Cors
