@@ -79,6 +79,9 @@ def generate_sismograma():
         output_image.seek(0)
         plt.close(fig)
 
+        print(f"Generando imagen para {streams.keys()}")
+
+
         return send_file(output_image, mimetype='image/png')
 
     except Exception as e:
