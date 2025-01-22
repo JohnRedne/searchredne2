@@ -8,65 +8,59 @@ Original file is located at
 """
 
 from flask import Flask, request, jsonify, send_file
-from obspy import read
 import requests
 import io
+from obspy import read
 import matplotlib.pyplot as plt
 
 app = Flask(__name__)
 
-@app.route('/process_links', methods=['POST'])
-def process_links():
+@app.route('/generate_sismograma', methods=['GET'])
+def generate_sismograma():
     try:
-        # Recibe una lista de enlaces desde el cliente
-        data = request.json
-        urls = data.get('urls', [])
-        if not urls:
-            return jsonify({"error": "No se proporcionaron enlaces"}), 400
+        # Obtener parámetros de la solicitud
+        start = request.args.get('start')
+        end = request.args.get('end')
+        net = request.args.get('net')
+        sta = request.args.get('sta')
+        loc = request.args.get('loc')
+        cha = request.args.get('cha')
 
-        # Descargar datos de cada enlace
-        streams = []
-        for url in urls:
-            try:
-                response = requests.get(url)
-                if response.status_code == 200:
-                    mini_seed_data = io.BytesIO(response.content)
-                    streams.append(read(mini_seed_data))
-                else:
-                    return jsonify({"error": f"Error al descargar datos del enlace: {url}"}), 500
-            except Exception as e:
-                return jsonify({"error": f"Error al procesar el enlace {url}: {str(e)}"}), 500
+        # Validar parámetros
+        if not all([start, end, net, sta, loc, cha]):
+            return jsonify({"error": "Faltan parámetros requeridos"}), 400
 
-        # Crear un gráfico combinando todos los canales
-        fig, ax = plt.subplots(len(streams), 1, figsize=(10, 6 * len(streams)))
-        if len(streams) == 1:
-            ax = [ax]  # Convertir en lista si solo hay un canal
+        # Construir el enlace hacia el servidor de datos
+        url = f"http://osso.univalle.edu.co/fdsnws/dataselect/1/query?starttime={start}&endtime={end}&network={net}&station={sta}&location={loc}&channel={cha}&nodata=404"
 
-        for idx, stream in enumerate(streams):
-            tr = stream[0]
-            times = tr.times("matplotlib")
-            ax[idx].plot(times, tr.data, label=f"Canal {tr.stats.channel}", linewidth=0.8)
-            ax[idx].set_title(f"Estación {tr.stats.station} - Canal {tr.stats.channel}")
-            ax[idx].set_xlabel("Tiempo")
-            ax[idx].set_ylabel("Amplitud")
-            ax[idx].legend()
-            ax[idx].grid()
+        # Realizar la solicitud al servidor remoto
+        response = requests.get(url)
+        if response.status_code != 200:
+            return jsonify({"error": f"Error al descargar datos: {response.status_code}"}), 500
 
-        # Ajustar diseño del gráfico
-        plt.tight_layout()
+        # Procesar los datos MiniSEED
+        mini_seed_data = io.BytesIO(response.content)
+        st = read(mini_seed_data)
 
-        # Guardar la imagen en memoria
-        output_image = io.BytesIO()
-        plt.savefig(output_image, format='png', dpi=100)
-        output_image.seek(0)
+        # Crear gráfico del sismograma
+        tr = st[0]
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.plot(tr.times("matplotlib"), tr.data, color='blue')
+        ax.set_title(f"Sismograma {sta} {cha}")
+        ax.set_xlabel("Tiempo (HH:MM:SS)")
+        ax.set_ylabel("Amplitud")
+        plt.grid()
+
+        # Guardar el gráfico en memoria
+        output = io.BytesIO()
+        plt.savefig(output, format='png')
+        output.seek(0)
         plt.close(fig)
 
-        return send_file(output_image, mimetype='image/png')
+        return send_file(output, mimetype='image/png')
 
     except Exception as e:
-        return jsonify({"error": f"Ocurrió un error general: {str(e)}"}), 500
+        return jsonify({"error": f"Ocurrió un error: {str(e)}"}), 500
 
-
-# Despliegue local
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
