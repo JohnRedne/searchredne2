@@ -8,16 +8,15 @@ Original file is located at
 """
 
 from flask import Flask, request, jsonify, send_file
-import urllib.request
+import requests
 import io
 from obspy import read
 import matplotlib.pyplot as plt
-import os
+from datetime import datetime
 from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)
-
 
 def date_to_julian_day(date: str) -> int:
     """Convierte una fecha ISO8601 al día juliano del año."""
@@ -25,7 +24,6 @@ def date_to_julian_day(date: str) -> int:
     start_of_year = datetime(dt.year, 1, 1)
     julian_day = (dt - start_of_year).days + 1
     return julian_day
-
 
 @app.route('/generate_sismograma', methods=['GET'])
 def generate_sismograma():
@@ -55,21 +53,19 @@ def generate_sismograma():
 
         streams = {}
 
-        # Descargar y procesar los datos
+        # Descargar y procesar los datos directamente desde memoria
         for channel, url in urls.items():
-            temp_file = f"{channel}.mseed"
+            print(f"Accediendo a: {url}")
             try:
-                # Descargar al disco
-                urllib.request.urlretrieve(url, temp_file)
-                print(f"Archivo descargado: {temp_file}")
+                response = requests.get(url, timeout=150)
+                if response.status_code != 200:
+                    raise Exception(f"Error {response.status_code} al descargar el archivo {url}")
 
-                # Leer con ObsPy
-                streams[channel] = read(temp_file)
-                os.remove(temp_file)
+                # Leer directamente con ObsPy desde la memoria
+                streams[channel] = read(io.BytesIO(response.content))
+                print(f"Datos del canal {channel} procesados correctamente.")
 
             except Exception as e:
-                if os.path.exists(temp_file):
-                    os.remove(temp_file)
                 return jsonify({"error": f"Error procesando {channel}: {str(e)}"}), 500
 
         # Graficar los datos
@@ -96,9 +92,9 @@ def generate_sismograma():
     except Exception as e:
         return jsonify({"error": f"Ocurrió un error: {str(e)}"}), 500
 
-
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+
 
 
 
