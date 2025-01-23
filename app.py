@@ -8,16 +8,17 @@ Original file is located at
 """
 
 from flask import Flask, request, jsonify, send_file
-import requests
+import urllib.request
 import io
 from obspy import read
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 from datetime import datetime
+import os
 from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)
-
 
 def date_to_julian_day(date: str) -> int:
     """Convierte una fecha ISO8601 al día juliano del año."""
@@ -26,12 +27,9 @@ def date_to_julian_day(date: str) -> int:
     julian_day = (dt - start_of_year).days + 1
     return julian_day
 
-
 @app.route('/generate_sismograma', methods=['GET'])
 def generate_sismograma():
     try:
-        print(f"Solicitud recibida: {request.args}")  # Log inicial de la solicitud
-
         # Obtener parámetros de la solicitud
         start = request.args.get('start')
         end = request.args.get('end')
@@ -40,7 +38,6 @@ def generate_sismograma():
         channels = ['HNE.D', 'HNN.D', 'HNZ.D']
 
         if not all([start, end, net, sta]):
-            print("Parámetros faltantes")  # Log para parámetros faltantes
             return jsonify({"error": "Faltan parámetros requeridos (start, end, net, sta)"}), 400
 
         # Convertir fecha de inicio al día juliano
@@ -56,56 +53,67 @@ def generate_sismograma():
             for channel in channels
         }
 
-        print(f"URLs generadas: {urls}")  # Log de las URLs generadas
-
         streams = {}
 
-        # Descargar y procesar los datos
+        # Paso 1: Descargar y leer los datos de cada canal
         for channel, url in urls.items():
+            file_path = f"{channel}.mseed"
             try:
-                print(f"Descargando datos desde: {url}")  # Log de la descarga
-                response = requests.get(url, timeout=150)
-                if response.status_code != 200:
-                    raise Exception(f"Error {response.status_code} al descargar el archivo {url}")
+                print(f"Descargando el archivo {channel}...")
+                urllib.request.urlretrieve(url, file_path)
+                print(f"Archivo {channel} descargado con éxito.")
 
-                # Leer el archivo MiniSEED desde memoria
-                streams[channel] = read(io.BytesIO(response.content))
-                print(f"Datos procesados para el canal {channel}")  # Log de procesamiento exitoso
+                # Leer el archivo MiniSEED
+                streams[channel] = read(file_path)
+                print(f"Información del archivo {channel}:")
+                print(streams[channel][0].stats)  # Mostrar información básica de la estación
+
+                # Eliminar el archivo temporal
+                os.remove(file_path)
 
             except Exception as e:
-                print(f"Error procesando {channel}: {e}")  # Log del error específico
+                if os.path.exists(file_path):
+                    os.remove(file_path)
                 return jsonify({"error": f"Error procesando {channel}: {str(e)}"}), 500
 
-        # Graficar los datos
+        # Crear una figura para los gráficos
         fig, axes = plt.subplots(len(channels), 1, figsize=(12, 10))
         for idx, (channel, stream) in enumerate(streams.items()):
             trace = stream[0]
-            axes[idx].plot(trace.times("matplotlib"), trace.data, label=f"Canal {channel}", color='blue')
-            axes[idx].set_title(f"Sismograma {channel}")
-            axes[idx].set_xlabel("Tiempo (UTC)")
-            axes[idx].set_ylabel("Amplitud")
-            axes[idx].grid()
-            axes[idx].legend()
 
+            # Recortar la señal entre los tiempos proporcionados
+            start_time = trace.stats.starttime
+            end_time = trace.stats.endtime
+            st_trimmed = stream.slice(starttime=start_time, endtime=end_time)
+            trace_trimmed = st_trimmed[0]
+
+            axes[idx].plot(trace_trimmed.times("matplotlib"), trace_trimmed.data, label=f"Canal {channel}", linewidth=0.8, color="blue")
+            axes[idx].set_title(f"Sismograma {channel} ({trace.stats.station})", fontsize=12)
+            axes[idx].set_ylabel("Amplitud", fontsize=10)
+            axes[idx].legend(loc="upper right")
+            axes[idx].grid(True, linestyle="--", alpha=0.7)
+
+            # Formatear el eje X para mostrar UTC
+            axes[idx].xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S UTC'))
+            axes[idx].set_xlabel("Tiempo (HH:MM:SS UTC)", fontsize=10)
+
+        # Ajustar el diseño del gráfico
         plt.tight_layout()
 
-        # Guardar y enviar la imagen
+        # Guardar la imagen en memoria y devolverla
         output_image = io.BytesIO()
         plt.savefig(output_image, format='png')
         output_image.seek(0)
         plt.close(fig)
 
-        print("Imagen generada exitosamente")  # Log de éxito
-
         return send_file(output_image, mimetype='image/png')
 
     except Exception as e:
-        print(f"Error general: {e}")  # Log del error general
         return jsonify({"error": f"Ocurrió un error: {str(e)}"}), 500
 
-
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5000, debug=True)
+
 
 
 
