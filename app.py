@@ -38,7 +38,7 @@ def generate_sismograma():
 
         # Descargar datos
         print(f"Intentando descargar datos desde: {url}")
-        response = requests.get(url, timeout=150)
+        response = requests.get(url, timeout=500)
         print(f"Estado de la respuesta: {response.status_code}")
 
         if response.status_code != 200:
