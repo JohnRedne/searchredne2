@@ -13,10 +13,12 @@ import io
 from obspy import read
 import matplotlib.pyplot as plt
 from datetime import datetime
+import urllib.request
 import os
 from flask_cors import CORS
 
 app = Flask(__name__)
+
 CORS(app)
 
 
@@ -27,17 +29,16 @@ def date_to_julian_day(date: str) -> int:
     julian_day = (dt - start_of_year).days + 1
     return julian_day
 
-
 @app.route('/generate_sismograma', methods=['GET'])
 def generate_sismograma():
-    print(f"Solicitud recibida: {request.args}")
+    print(f"Solicitud recibida: {request.args}")  # Log de la solicitud
     try:
         # Obtener parámetros de la solicitud
-        start = request.args.get('start')
-        end = request.args.get('end')
-        net = request.args.get('net')
-        sta = request.args.get('sta')
-        channels = ['HNE.D', 'HNN.D', 'HNZ.D']
+        start = request.args.get('start')  # Fecha de inicio en ISO8601
+        end = request.args.get('end')      # Fecha de fin en ISO8601
+        net = request.args.get('net')      # Red (por ejemplo, "UX")
+        sta = request.args.get('sta')      # Estación (por ejemplo, "UIS01")
+        channels = ['HNE.D', 'HNN.D', 'HNZ.D']  # Lista de canales
 
         # Validar parámetros
         if not all([start, end, net, sta]):
@@ -64,14 +65,9 @@ def generate_sismograma():
             print(f"Accediendo a: {url}")
             try:
                 temp_file = f"{channel}.mseed"
-                response = requests.get(url, timeout=300)
-                if response.status_code != 200:
-                    raise Exception(f"Error {response.status_code} al descargar el archivo {url}")
-
-                with open(temp_file, 'wb') as f:
-                    f.write(response.content)
-
-                streams[channel] = read(temp_file)
+                urllib.request.urlretrieve(url, temp_file)  # Descargar el archivo
+                print(f"Archivo {temp_file} descargado con éxito.")
+                streams[channel] = read(temp_file)  # Leer el archivo MiniSEED
                 print(f"Información del archivo {channel}:")
                 print(streams[channel][0].stats)  # Mostrar información básica de la estación
                 os.remove(temp_file)  # Eliminar el archivo temporal después de leerlo
@@ -103,7 +99,6 @@ def generate_sismograma():
 
     except Exception as e:
         return jsonify({"error": f"Ocurrió un error: {str(e)}"}), 500
-
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
