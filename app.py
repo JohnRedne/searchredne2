@@ -18,6 +18,7 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)
 
+
 def date_to_julian_day(date: str) -> int:
     """Convierte una fecha ISO8601 al día juliano del año."""
     dt = datetime.fromisoformat(date)
@@ -25,9 +26,12 @@ def date_to_julian_day(date: str) -> int:
     julian_day = (dt - start_of_year).days + 1
     return julian_day
 
+
 @app.route('/generate_sismograma', methods=['GET'])
 def generate_sismograma():
     try:
+        print(f"Solicitud recibida: {request.args}")  # Log inicial de la solicitud
+
         # Obtener parámetros de la solicitud
         start = request.args.get('start')
         end = request.args.get('end')
@@ -36,6 +40,7 @@ def generate_sismograma():
         channels = ['HNE.D', 'HNN.D', 'HNZ.D']
 
         if not all([start, end, net, sta]):
+            print("Parámetros faltantes")  # Log para parámetros faltantes
             return jsonify({"error": "Faltan parámetros requeridos (start, end, net, sta)"}), 400
 
         # Convertir fecha de inicio al día juliano
@@ -51,21 +56,24 @@ def generate_sismograma():
             for channel in channels
         }
 
+        print(f"URLs generadas: {urls}")  # Log de las URLs generadas
+
         streams = {}
 
-        # Descargar y procesar los datos directamente desde memoria
+        # Descargar y procesar los datos
         for channel, url in urls.items():
-            print(f"Accediendo a: {url}")
             try:
+                print(f"Descargando datos desde: {url}")  # Log de la descarga
                 response = requests.get(url, timeout=150)
                 if response.status_code != 200:
                     raise Exception(f"Error {response.status_code} al descargar el archivo {url}")
 
-                # Leer directamente con ObsPy desde la memoria
+                # Leer el archivo MiniSEED desde memoria
                 streams[channel] = read(io.BytesIO(response.content))
-                print(f"Datos del canal {channel} procesados correctamente.")
+                print(f"Datos procesados para el canal {channel}")  # Log de procesamiento exitoso
 
             except Exception as e:
+                print(f"Error procesando {channel}: {e}")  # Log del error específico
                 return jsonify({"error": f"Error procesando {channel}: {str(e)}"}), 500
 
         # Graficar los datos
@@ -87,13 +95,18 @@ def generate_sismograma():
         output_image.seek(0)
         plt.close(fig)
 
+        print("Imagen generada exitosamente")  # Log de éxito
+
         return send_file(output_image, mimetype='image/png')
 
     except Exception as e:
+        print(f"Error general: {e}")  # Log del error general
         return jsonify({"error": f"Ocurrió un error: {str(e)}"}), 500
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+
 
 
 
