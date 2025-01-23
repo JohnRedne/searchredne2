@@ -28,44 +28,43 @@ def date_to_julian_day(date: str) -> int:
 @app.route('/generate_sismograma', methods=['GET'])
 def generate_sismograma():
     try:
-        print(f"Solicitud recibida: {request.args}")  # Log inicial de la solicitud
+        print(f"Solicitud recibida: {request.args}")
 
         # Obtener parámetros de la solicitud
         start = request.args.get('start')
         end = request.args.get('end')
         net = request.args.get('net')
         sta = request.args.get('sta')
-        channel = request.args.get('channel', 'HNE.D')  # Canal predeterminado: HNE.D
 
         if not all([start, end, net, sta]):
-            print("Parámetros faltantes")  # Log para parámetros faltantes
             return jsonify({"error": "Faltan parámetros requeridos (start, end, net, sta)"}), 400
 
         # Convertir fecha de inicio al día juliano
         julian_day = date_to_julian_day(start)
         year = datetime.fromisoformat(start).year
 
-        # Base URL
-        base_url = f"http://osso.univalle.edu.co/apps/seiscomp/archive/{year}/{net}/{sta}"
+        # Canal fijo
+        channel = 'HNE.D'
 
-        # Crear enlace para el canal especificado
+        # Crear enlace para el canal fijo
+        base_url = f"http://osso.univalle.edu.co/apps/seiscomp/archive/{year}/{net}/{sta}"
         url = f"{base_url}/{channel}/{net}.{sta}.00.{channel}.{year}.{julian_day}"
 
-        print(f"URL generada: {url}")  # Log de la URL generada
+        print(f"URL generada: {url}")
 
         # Descargar y procesar los datos
         try:
-            print(f"Descargando datos desde: {url}")  # Log de la descarga
+            print(f"Descargando datos desde: {url}")
             response = requests.get(url, timeout=150)
             if response.status_code != 200:
                 raise Exception(f"Error {response.status_code} al descargar el archivo {url}")
 
             # Leer el archivo MiniSEED desde memoria
             stream = read(io.BytesIO(response.content))
-            print(f"Datos procesados para el canal {channel}")  # Log de procesamiento exitoso
+            print(f"Datos procesados para el canal {channel}")
 
         except Exception as e:
-            print(f"Error procesando {channel}: {e}")  # Log del error específico
+            print(f"Error procesando {channel}: {e}")
             return jsonify({"error": f"Error procesando {channel}: {str(e)}"}), 500
 
         # Graficar los datos
@@ -80,22 +79,22 @@ def generate_sismograma():
 
         plt.tight_layout()
 
-        # Guardar y enviar la imagen
+        # Guardar la imagen en memoria y devolverla
         output_image = io.BytesIO()
         plt.savefig(output_image, format='png')
         output_image.seek(0)
         plt.close(fig)
 
-        print("Imagen generada exitosamente")  # Log de éxito
-
+        print("Imagen generada exitosamente")
         return send_file(output_image, mimetype='image/png')
 
     except Exception as e:
-        print(f"Error general: {e}")  # Log del error general
+        print(f"Error general: {e}")
         return jsonify({"error": f"Ocurrió un error: {str(e)}"}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+
 
 
 
