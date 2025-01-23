@@ -35,7 +35,7 @@ def generate_sismograma():
         end = request.args.get('end')
         net = request.args.get('net')
         sta = request.args.get('sta')
-        channel = request.args.get('channel', 'HNE.D')  # Canal por defecto
+        channel = request.args.get('channel', 'HNE.D')  # Canal predeterminado: HNE.D
 
         if not all([start, end, net, sta]):
             print("Parámetros faltantes")  # Log para parámetros faltantes
@@ -48,7 +48,7 @@ def generate_sismograma():
         # Base URL
         base_url = f"http://osso.univalle.edu.co/apps/seiscomp/archive/{year}/{net}/{sta}"
 
-        # Crear enlace para el canal
+        # Crear enlace para el canal especificado
         url = f"{base_url}/{channel}/{net}.{sta}.00.{channel}.{year}.{julian_day}"
 
         print(f"URL generada: {url}")  # Log de la URL generada
@@ -69,7 +69,7 @@ def generate_sismograma():
             return jsonify({"error": f"Error procesando {channel}: {str(e)}"}), 500
 
         # Graficar los datos
-        fig, ax = plt.subplots(figsize=(12, 5))
+        fig, ax = plt.subplots(figsize=(12, 6))
         trace = stream[0]
         ax.plot(trace.times("matplotlib"), trace.data, label=f"Canal {channel}", color='blue')
         ax.set_title(f"Sismograma {channel}")
