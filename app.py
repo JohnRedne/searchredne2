@@ -30,42 +30,18 @@ def generate_sismograma():
     try:
         print(f"Solicitud recibida: {request.args}")
 
-        # Obtener parámetros de la solicitud
-        start = request.args.get('start')
-        end = request.args.get('end')
-        net = request.args.get('net')
-        sta = request.args.get('sta')
+        # Parámetros fijos
+        channel = "HNE.D"
+        url = "http://osso.univalle.edu.co/apps/seiscomp/archive/2024/UX/UIS01/HNE.D/UX.UIS01.00.HNE.D.2024.330"
 
-        if not all([start, end, net, sta]):
-            return jsonify({"error": "Faltan parámetros requeridos (start, end, net, sta)"}), 400
+        print(f"Descargando datos desde: {url}")
+        response = requests.get(url, timeout=150)
+        if response.status_code != 200:
+            raise Exception(f"Error {response.status_code} al descargar el archivo {url}")
 
-        # Convertir fecha de inicio al día juliano
-        julian_day = date_to_julian_day(start)
-        year = datetime.fromisoformat(start).year
-
-        # Canal fijo
-        channel = 'HNE.D'
-
-        # Crear enlace para el canal fijo
-        base_url = f"http://osso.univalle.edu.co/apps/seiscomp/archive/{year}/{net}/{sta}"
-        url = f"{base_url}/{channel}/{net}.{sta}.00.{channel}.{year}.{julian_day}"
-
-        print(f"URL generada: {url}")
-
-        # Descargar y procesar los datos
-        try:
-            print(f"Descargando datos desde: {url}")
-            response = requests.get(url, timeout=150)
-            if response.status_code != 200:
-                raise Exception(f"Error {response.status_code} al descargar el archivo {url}")
-
-            # Leer el archivo MiniSEED desde memoria
-            stream = read(io.BytesIO(response.content))
-            print(f"Datos procesados para el canal {channel}")
-
-        except Exception as e:
-            print(f"Error procesando {channel}: {e}")
-            return jsonify({"error": f"Error procesando {channel}: {str(e)}"}), 500
+        # Leer el archivo MiniSEED desde memoria
+        stream = read(io.BytesIO(response.content))
+        print(f"Datos procesados para el canal {channel}")
 
         # Graficar los datos
         fig, ax = plt.subplots(figsize=(12, 6))
@@ -79,7 +55,7 @@ def generate_sismograma():
 
         plt.tight_layout()
 
-        # Guardar la imagen en memoria y devolverla
+        # Guardar y enviar la imagen
         output_image = io.BytesIO()
         plt.savefig(output_image, format='png')
         output_image.seek(0)
