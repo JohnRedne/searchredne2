@@ -8,16 +8,17 @@ Original file is located at
 """
 
 from flask import Flask, request, jsonify, send_file
-import requests
+import urllib.request
 import io
-from obspy import read
+from obspy import read, UTCDateTime
 import matplotlib.pyplot as plt
-from datetime import datetime
-from flask_cors import CORS
+import matplotlib.dates as mdates
+from datetime import datetime, timedelta
+import os
 
 app = Flask(__name__)
-CORS(app)
 
+# Función para convertir una fecha ISO8601 a día juliano
 def date_to_julian_day(date: str) -> int:
     """Convierte una fecha ISO8601 al día juliano del año."""
     dt = datetime.fromisoformat(date)
@@ -28,58 +29,104 @@ def date_to_julian_day(date: str) -> int:
 @app.route('/generate_sismograma', methods=['GET'])
 def generate_sismograma():
     try:
-        print(f"Solicitud recibida: {request.args}")
+        # Obtener parámetros de la solicitud
+        start_date_input = request.args.get("start")
+        end_date_input = request.args.get("end")
+        net = request.args.get("net")
+        sta = request.args.get("sta")
 
-        # Parámetros fijos
-        channel = "HNE.D"
-        url = "http://osso.univalle.edu.co/apps/seiscomp/archive/2024/UX/UIS01/HNE.D/UX.UIS01.00.HNE.D.2024.330"
+        # Canales y colores predefinidos
+        channels = ["HNE.D", "HNN.D", "HNZ.D"]
+        colors = ["blue", "green", "red"]
 
-        print(f"URL generada: {url}")
+        # Validar los parámetros
+        if not all([start_date_input, end_date_input, net, sta]):
+            return jsonify({"error": "Faltan parámetros requeridos (start, end, net, sta)."}), 400
 
-        # Descargar datos
-        print(f"Intentando descargar datos desde: {url}")
-        response = requests.get(url, timeout=500)
-        print(f"Estado de la respuesta: {response.status_code}")
+        # Validar formato de las fechas
+        try:
+            start_date = datetime.fromisoformat(start_date_input)
+            end_date = datetime.fromisoformat(end_date_input)
+        except ValueError:
+            return jsonify({"error": "El formato de la fecha debe ser ISO8601 (ej: 2024-12-30T21:01:00)."}), 400
 
-        if response.status_code != 200:
-            raise Exception(f"Error {response.status_code} al descargar el archivo {url}")
+        # Ajustar si las horas son iguales
+        if start_date == end_date:
+            start_date += timedelta(seconds=20)
+            end_date -= timedelta(seconds=10)
 
-        print("Datos descargados exitosamente.")
+        # Limitar el intervalo a 15 minutos
+        if (end_date - start_date) > timedelta(minutes=15):
+            end_date = start_date + timedelta(minutes=15)
 
-        # Leer archivo MiniSEED
-        print("Intentando leer el archivo MiniSEED...")
-        stream = read(io.BytesIO(response.content))
-        print(f"Datos procesados para el canal {channel}: {stream[0].stats}")
+        # Convertir fecha de inicio al día juliano
+        julian_day = date_to_julian_day(start_date.isoformat())
+        year = start_date.year
 
-        # Graficar los datos
-        print("Generando gráfico...")
-        fig, ax = plt.subplots(figsize=(12, 6))
-        trace = stream[0]
-        ax.plot(trace.times("matplotlib"), trace.data, label=f"Canal {channel}", color='blue')
-        ax.set_title(f"Sismograma {channel}")
-        ax.set_xlabel("Tiempo (UTC)")
-        ax.set_ylabel("Amplitud")
-        ax.grid()
-        ax.legend()
+        streams = {}
+        urls = {}
+        for channel in channels:
+            # Construir la URL del archivo MiniSEED
+            url = f"http://osso.univalle.edu.co/apps/seiscomp/archive/{year}/{net}/{sta}/{channel}/{net}.{sta}.00.{channel}.{year}.{julian_day}"
+            urls[channel] = url
 
-        plt.tight_layout()
+            # Descargar y leer el archivo MiniSEED
+            response = urllib.request.urlopen(url)
+            stream = read(io.BytesIO(response.read()))
+            streams[channel] = stream
 
-        # Guardar y enviar la imagen
+        # Crear variable para la fecha
+        date_str = start_date.strftime('%b-%d-%Y')
+
+        # Graficar los datos de los sismogramas
+        fig, axes = plt.subplots(len(channels), 1, figsize=(12, 12), sharex=False)
+        plt.subplots_adjust(hspace=0.5)
+
+        for i, (channel, color) in enumerate(zip(channels, colors)):
+            trace = streams[channel][0]
+
+            # Convertir fechas de recorte a UTCDateTime
+            start_utc = UTCDateTime(start_date)
+            end_utc = UTCDateTime(end_date)
+
+            # Recortar los datos al intervalo definido por el usuario
+            stream = streams[channel].slice(starttime=start_utc, endtime=end_utc)
+            trace = stream[0]
+
+            ax = axes[i]
+            ax.plot(trace.times("matplotlib"), trace.data, label=f"Canal {channel}", linewidth=0.8, color=color)
+            ax.set_title(f"Sismograma {channel} ({trace.stats.station})", fontsize=12)
+            ax.set_ylabel("Amplitud", fontsize=10)
+            ax.legend(loc="upper right")
+            ax.grid(True, linestyle="--", alpha=0.7)
+
+            # Formatear el eje X para mostrar tiempos en UTC en cada gráfico
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S UTC'))
+
+            # Mostrar el URL asociado debajo de cada gráfico
+            ax.text(0.5, -0.2, f"URL ({channel}): {urls[channel]}", transform=ax.transAxes, fontsize=8, color=color, ha="center")
+
+            # Ajustar etiquetas para el último gráfico
+            if i == len(channels) - 1:
+                ax.set_xlabel("Tiempo (HH:MM:SS UTC)", fontsize=10)
+
+        # Mostrar la fecha debajo de todos los sismogramas
+        plt.figtext(0.5, 0.01, f"Fecha: {date_str}", wrap=True, horizontalalignment='center', fontsize=12)
+
+        # Guardar la imagen en memoria
         output_image = io.BytesIO()
-        plt.savefig(output_image, format='png')
+        plt.savefig(output_image, format='png', bbox_inches="tight")
         output_image.seek(0)
         plt.close(fig)
 
-        print("Imagen generada exitosamente.")
         return send_file(output_image, mimetype='image/png')
 
     except Exception as e:
-        print(f"Error general: {e}")
-        return jsonify({"error": f"Ocurrió un error: {str(e)}"}), 500
-
+        return jsonify({"error": f"Ocurrió un error durante el procesamiento: {str(e)}"}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+
 
 
 
