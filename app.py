@@ -71,9 +71,14 @@ def generate_sismograma():
             urls[channel] = url
 
             # Descargar y leer el archivo MiniSEED
-            response = urllib.request.urlopen(url)
-            stream = read(io.BytesIO(response.read()))
-            streams[channel] = stream
+            try:
+                print(f"Descargando datos desde: {url}")
+                response = urllib.request.urlopen(url)
+                stream = read(io.BytesIO(response.read()))
+                streams[channel] = stream
+            except Exception as e:
+                print(f"Error al descargar o procesar datos para {channel}: {e}")
+                return jsonify({"error": f"No se pudo procesar el canal {channel}: {e}"}), 500
 
         # Crear variable para la fecha
         date_str = start_date.strftime('%b-%d-%Y')
@@ -122,10 +127,12 @@ def generate_sismograma():
         return send_file(output_image, mimetype='image/png')
 
     except Exception as e:
+        print(f"Error general: {e}")
         return jsonify({"error": f"Ocurrió un error durante el procesamiento: {str(e)}"}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+
 
 
 
