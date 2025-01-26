@@ -131,7 +131,7 @@ def generate_sismograma():
         return jsonify({"error": f"Ocurrió un error durante el procesamiento: {str(e)}"}), 500
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8000))  # 5000Obtén el puerto desde las variables de entorno
+    port = int(os.environ.get('PORT', 8080))  # 5000Obtén el puerto desde las variables de entorno
     app.run(host='0.0.0.0', port=port) #5000
 
 
