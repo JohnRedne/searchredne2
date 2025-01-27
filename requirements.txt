@@ -1,6 +1,6 @@
-flask
-obspy
-matplotlib
+flask==2.2.2
+obspy==1.4.0
+matplotlib==3.7.1
 requests
-gunicorn
+gunicorn==20.1.0
 Flask-Cors
